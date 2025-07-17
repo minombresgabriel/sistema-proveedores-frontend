@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const instance = axios.create({
-  baseURL: import.meta.env.PERRITO_DE_ARROZ,
+  baseURL: "https://sistema-proveedores-backend-production.up.railway.app/api",
 });
 
 instance.interceptors.request.use((config) => {
