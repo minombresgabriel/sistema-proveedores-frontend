@@ -54,8 +54,6 @@ const AdminDashboard = () => {
         `/admin/asistencias/por-fecha?fecha=${fecha}`
       );
       setAsistencias(res.data);
-      console.log("Asistencias cargadas:", res.data);
-
       setMensaje("");
     } catch (err) {
       console.error("Error al obtener asistencias:", err);
@@ -64,7 +62,9 @@ const AdminDashboard = () => {
   };
 
   const asistenciasFiltradas = asistencias.filter((a) =>
-    a.usuario?.nombre.toLowerCase().includes(busquedaAsistencia.toLowerCase())
+    (a.usuario?.nombre || "")
+      .toLowerCase()
+      .includes(busquedaAsistencia.toLowerCase())
   );
 
   const exportarExcel = async () => {
@@ -101,7 +101,6 @@ const AdminDashboard = () => {
         await axios.post("/admin/crear-usuario", formUsuario);
         setMensaje("Usuario creado exitosamente");
       }
-
       obtenerUsuarios();
       cerrarModal();
     } catch (error) {
@@ -158,25 +157,24 @@ const AdminDashboard = () => {
   }, []);
 
   useEffect(() => {
-    if (fecha) {
-      buscarAsistencias();
-    }
+    if (fecha) buscarAsistencias();
   }, [fecha]);
 
+  // ---- CONTADORES CORREGIDOS ----
+  // solo usuarios con rol 'user'
   const usuariosNormales = usuarios.filter((u) => u.rol === "user");
 
-  const asistenciasDeUsuarios = asistencias.filter((a) => {
-    const fechaAsistencia = new Date(a.fecha).toISOString().split("T")[0];
-    return fechaAsistencia === fecha && a.usuario?.rol === "user";
-  });
-
-  const usuariosConIds = new Set(
-    asistenciasDeUsuarios.map((a) => a.usuario._id)
+  // contar asistentes únicos por usuario._id (para evitar duplicados)
+  const asistentesUnicos = new Set(
+    asistencias
+      .map((a) => a?.usuario?._id || a?.usuario) // soporta populate o solo id
+      .filter(Boolean)
+      .map((id) => id.toString())
   );
 
-  const usuariosSinAsistencia = usuariosNormales.filter(
-    (u) => !usuariosConIds.has(u._id)
-  );
+  const ingresaron = asistentesUnicos.size;
+  const noIngresaron = Math.max(usuariosNormales.length - ingresaron, 0);
+  // -------------------------------
 
   return (
     <div
@@ -209,7 +207,7 @@ const AdminDashboard = () => {
             >
               <div className="card-body d-flex flex-column justify-content-center align-items-center py-2 px-2">
                 <div className="small fw-semibold mb-1">✅ Ingresaron</div>
-                <div className="fs-5 fw-bold">{asistencias.length}</div>
+                <div className="fs-5 fw-bold">{ingresaron}</div>
               </div>
             </div>
 
@@ -219,14 +217,12 @@ const AdminDashboard = () => {
             >
               <div className="card-body d-flex flex-column justify-content-center align-items-center py-2 px-2">
                 <div className="small fw-semibold mb-1">❌ No ingresaron</div>
-                <div className="fs-5 fw-bold">
-                  {usuariosSinAsistencia.length - asistencias.length}
-                </div>
+                <div className="fs-5 fw-bold">{noIngresaron}</div>
               </div>
             </div>
           </div>
 
-          {/* Título (centro) y botón (derecha) */}
+          {/* Título y botón */}
           <div className="d-flex align-items-center ms-auto gap-3 mt-3 mt-md-0">
             <h2 className="fw-bold text-white text-nowrap mb-0 pe-5 text-decoration-underline">
               Panel de Administración
@@ -244,6 +240,7 @@ const AdminDashboard = () => {
 
         {/* Contenedor de dos columnas */}
         <div className="row">
+          {/* Asistencias */}
           <div className="col-md-6 mb-4">
             <div className="p-3 bg-white rounded shadow-sm h-100 d-flex flex-column">
               <h5 className="fw-bold mb-3 text-dark">📅 Asistencias De Hoy</h5>
@@ -264,6 +261,12 @@ const AdminDashboard = () => {
                   value={busquedaAsistencia}
                   onChange={(e) => setBusquedaAsistencia(e.target.value)}
                 />
+                <button
+                  className="btn btn-outline-secondary"
+                  onClick={exportarExcel}
+                >
+                  Exportar Excel
+                </button>
               </div>
 
               <div
@@ -285,9 +288,7 @@ const AdminDashboard = () => {
                     {asistenciasFiltradas.map((a) => {
                       const fechaObj = new Date(a.fecha);
                       const fechaStr = fechaObj.toLocaleDateString();
-
                       const horaStr = fechaObj.toLocaleTimeString();
-
                       return (
                         <tr key={a._id}>
                           <td>{a.usuario?.nombre || "Desconocido"}</td>
@@ -304,19 +305,24 @@ const AdminDashboard = () => {
                         </tr>
                       );
                     })}
+                    {asistenciasFiltradas.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="text-center text-muted">
+                          Sin asistencias para esta fecha.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
           </div>
+
           {/* Usuarios */}
           <div className="col-md-5 mb-4">
-            <div className=" card-panel p-3 bg-white rounded shadow-sm h-100 d-flex flex-column">
+            <div className="card-panel p-3 bg-white rounded shadow-sm h-100 d-flex flex-column">
               <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-                {/* Título */}
                 <h5 className="fw-bold text-dark mb-0">Usuarios Registrados</h5>
-
-                {/* Contenedor del input + botón */}
                 <div className="d-flex align-items-center gap-2">
                   <input
                     type="text"
@@ -367,12 +373,15 @@ const AdminDashboard = () => {
                       </div>
                     </li>
                   ))}
+                  {usuariosFiltrados.length === 0 && (
+                    <li className="list-group-item text-center text-muted">
+                      Sin usuarios.
+                    </li>
+                  )}
                 </ul>
               </div>
             </div>
           </div>
-
-          {/* Asistencias */}
         </div>
 
         {/* Modal para crear/editar usuario */}
